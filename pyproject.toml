@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kaggle-slaying"
+version = "0.1.0"
+description = "Equipe multiagente para competicoes Kaggle, orquestrada com LangGraph."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "catboost>=1.2",
+  "joblib>=1.4",
+  "kaggle>=1.7",
+  "langchain-ollama>=1.0",
+  "langgraph>=1.0",
+  "lightgbm>=4.5",
+  "optuna>=4.0",
+  "pandas>=2.2",
+  "pydantic>=2.10",
+  "rich>=13.9",
+  "scikit-learn>=1.6",
+  "typer>=0.15",
+  "xgboost>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.9",
+]
+
+[project.scripts]
+kaggle-slaying = "kaggle_slaying.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kaggle_slaying"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

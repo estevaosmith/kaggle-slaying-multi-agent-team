@@ -1,0 +1,41 @@
+version: 1
+
+# O primeiro Scout prioriza competicoes tabulares que cabem em uma unica GPU
+# de 6 GB (ou CPU) e permitem o ciclo completo via Kaggle API.
+hard_filters:
+  modalities:
+    - tabular
+  problem_types:
+    - binary_classification
+    - multiclass_classification
+    - regression
+  submission_types:
+    - csv
+  minimum_days_remaining: 7
+  maximum_download_gb: 5
+  maximum_train_rows: 2000000
+  rules_must_be_reviewed: true
+  api_submission_required: true
+
+# As notas sao normalizadas entre 0 e 1. Uma competicao pouco famosa pode
+# ganhar em oportunidade, mas perde pontos se exigir dominio, compute ou uma
+# validacao que o time ainda nao domina.
+score_weights:
+  validation_confidence: 0.25
+  compute_fit: 0.20
+  participation_opportunity: 0.20
+  metric_support: 0.15
+  domain_fit: 0.10
+  time_remaining: 0.10
+
+risk_penalties:
+  external_data_expected: 0.20
+  code_only_submission: 0.40
+  high_domain_complexity: 0.15
+  unstable_or_custom_metric: 0.20
+  suspected_leakage_or_group_structure: 0.10
+
+decision_thresholds:
+  enter: 0.70
+  investigate: 0.50
+  reject_below: 0.50
