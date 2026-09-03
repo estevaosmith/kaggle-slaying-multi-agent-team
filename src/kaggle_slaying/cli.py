@@ -23,6 +23,7 @@ from kaggle_slaying.graph import build_bootstrap_graph, initial_state
 from kaggle_slaying.kaggle_cli import OAUTH_CREDENTIALS
 from kaggle_slaying.model_factory import run_model_factory
 from kaggle_slaying.monitor import refresh_leaderboard_report
+from kaggle_slaying.onboarding import DEFAULT_METRICS, create_competition_contract
 from kaggle_slaying.profiler import save_dataset_report
 from kaggle_slaying.scout import run_scout
 from kaggle_slaying.submission_gate import run_submission_gate
@@ -415,13 +416,71 @@ def _choose_competition() -> str:
 
 def _show_competitions() -> None:
     table = Table(title="Competicoes configuradas")
-    table.add_column("Slug")
+    table.add_column("Slug", no_wrap=True)
     table.add_column("Tipo")
     table.add_column("Metrica")
+    table.add_column("Fase")
+    table.add_column("Score")
+    table.add_column("Posicao")
+    problem_labels = {
+        "binary_classification": "binaria",
+        "multiclass_classification": "multiclasse",
+        "regression": "regressao",
+    }
+    phase_labels = {
+        "submitted": "enviada",
+        "awaiting_approval": "aguarda",
+    }
     for slug in configured_competitions():
         contract = load_competition(PROJECT_ROOT / "config" / "competitions" / f"{slug}.yaml")
-        table.add_row(slug, contract.problem_type, contract.metric)
+        try:
+            state, _ = load_workflow_state(slug)
+        except FileNotFoundError:
+            state = {}
+        rank = (
+            f"{state.get('rank')}/{state.get('total_teams')}"
+            if state.get("rank") is not None
+            else "-"
+        )
+        score = str(state.get("public_score")) if state.get("public_score") is not None else "-"
+        table.add_row(
+            slug,
+            problem_labels.get(contract.problem_type, contract.problem_type),
+            contract.metric,
+            phase_labels.get(state.get("phase"), state.get("phase", "nao executada")),
+            score,
+            rank,
+        )
     console.print(table)
+
+
+def _competition_init_wizard() -> None:
+    console.print("\n[bold]Adicionar competicao tabular[/bold]")
+    slug = Prompt.ask("Slug usado pelo Kaggle").strip()
+    name = Prompt.ask("Nome da competicao", default=slug).strip()
+    problem_type = Prompt.ask(
+        "Tipo do problema",
+        choices=["binary_classification", "multiclass_classification", "regression"],
+        default="binary_classification",
+    )
+    target_column = Prompt.ask("Coluna target").strip()
+    id_column = Prompt.ask("Coluna de ID", default="id").strip()
+    metric = Prompt.ask("Metrica", default=DEFAULT_METRICS[problem_type]).strip()
+    console.print(f"Contrato: {slug} | {problem_type} | target={target_column} | metrica={metric}")
+    if not Confirm.ask("Criar este contrato?", default=True):
+        console.print("Criacao cancelada.")
+        return
+    _, contract_path = create_competition_contract(
+        PROJECT_ROOT / "config" / "competitions",
+        name=name,
+        slug=slug,
+        problem_type=problem_type,
+        target_column=target_column,
+        id_column=id_column,
+        metric=metric,
+    )
+    console.print(f"[green]Contrato criado:[/green] {contract_path}")
+    console.print("Leia e aceite as regras da competicao no Kaggle antes de executar o fluxo.")
 
 
 def _show_menu() -> None:
@@ -433,6 +492,7 @@ def _show_menu() -> None:
     console.print("5. Validar submissao")
     console.print("6. Enviar submissao aprovada")
     console.print("7. Atualizar leaderboard")
+    console.print("8. Adicionar competicao")
     console.print("0. Sair")
 
 
@@ -441,7 +501,7 @@ def interactive_menu() -> None:
     """Abre um menu simples para operar o MVP pelo terminal."""
     while True:
         _show_menu()
-        choice = Prompt.ask("Escolha", choices=[str(value) for value in range(8)], default="0")
+        choice = Prompt.ask("Escolha", choices=[str(value) for value in range(9)], default="0")
         if choice == "0":
             console.print("Ate logo.")
             return
@@ -473,8 +533,16 @@ def interactive_menu() -> None:
                 competition = _choose_competition()
                 username = Prompt.ask("Usuario Kaggle", default="estevaosmith")
                 leaderboard_report(competition=competition, username=username)
+            elif choice == "8":
+                _competition_init_wizard()
         except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as error:
             console.print(f"[red]Nao foi possivel concluir: {error}[/red]")
+
+
+@app.command("competition-init")
+def competition_init() -> None:
+    """Cria interativamente o contrato YAML de uma competicao tabular."""
+    _competition_init_wizard()
 
 
 @app.command("scout")

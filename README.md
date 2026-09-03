@@ -90,7 +90,17 @@ submissao.
 
 ## Nova competicao
 
-Crie `config/competitions/SLUG.yaml` informando pelo menos:
+Use o assistente para criar o contrato inicial:
+
+```powershell
+.\.venv\Scripts\kaggle-slaying.exe competition-init
+```
+
+Ele tambem esta disponivel na opcao `8` do menu. O assistente nao entra na
+competicao nem aceita regras. Depois de revisar o YAML criado, leia e aceite as
+regras no Kaggle antes de executar `run`.
+
+Se preferir criar manualmente, adicione `config/competitions/SLUG.yaml`:
 
 ```yaml
 name: Nome da competicao
