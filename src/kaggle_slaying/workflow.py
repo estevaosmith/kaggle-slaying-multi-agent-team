@@ -191,6 +191,16 @@ def run_workflow(
     return report, state_path
 
 
+def load_workflow_state(competition: str) -> tuple[dict[str, Any], Path]:
+    state_path = PROJECT_ROOT / "artifacts" / competition / "workflow" / "state.json"
+    if not state_path.is_file():
+        raise FileNotFoundError(
+            f"Estado ausente para {competition!r}; execute o comando run primeiro."
+        )
+    with state_path.open(encoding="utf-8") as state_file:
+        return json.load(state_file), state_path
+
+
 def submit_approved(contract: CompetitionContract, expected_sha256: str) -> dict[str, Any]:
     gate_path = PROJECT_ROOT / "artifacts" / contract.slug / "submission_gate" / "gate_report.json"
     with gate_path.open(encoding="utf-8") as gate_file:

@@ -4,6 +4,8 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
+from importlib.util import find_spec
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -12,10 +14,12 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from kaggle_slaying import __version__
 from kaggle_slaying.competition import load_competition
 from kaggle_slaying.experiment_v2 import run_experiment_v2
 from kaggle_slaying.feature_experiment import run_feature_experiment
 from kaggle_slaying.graph import build_bootstrap_graph, initial_state
+from kaggle_slaying.kaggle_cli import OAUTH_CREDENTIALS
 from kaggle_slaying.model_factory import run_model_factory
 from kaggle_slaying.monitor import refresh_leaderboard_report
 from kaggle_slaying.profiler import save_dataset_report
@@ -23,11 +27,19 @@ from kaggle_slaying.scout import run_scout
 from kaggle_slaying.submission_gate import run_submission_gate
 from kaggle_slaying.tournament import run_tournament
 from kaggle_slaying.validation_v2 import run_validation_v2
-from kaggle_slaying.workflow import run_workflow, submit_approved
+from kaggle_slaying.workflow import load_workflow_state, run_workflow, submit_approved
 
 app = typer.Typer(help="Ferramentas do Kaggle-Slaying Multi-Agent Team.")
 console = Console()
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+@dataclass(frozen=True)
+class DiagnosticCheck:
+    label: str
+    required: bool
+    ok: bool
+    detail: str
 
 
 @app.callback()
@@ -67,16 +79,53 @@ def _ollama_server() -> tuple[bool, str]:
         return False, f"servico indisponivel: {exc}"
 
 
-@app.command()
-def doctor() -> None:
-    """Verifica se o ambiente minimo do projeto esta pronto."""
+def _kaggle_api() -> tuple[bool, str]:
+    code = (
+        "from kaggle_slaying.kaggle_cli import configure_project_credentials; "
+        "configure_project_credentials(); "
+        "from kaggle.api.kaggle_api_extended import KaggleApi; "
+        "api=KaggleApi(); api.authenticate(); api.competitions_list(page_size=1); "
+        "print('autenticada e respondendo')"
+    )
+    return _command_version([sys.executable, "-c", code])
+
+
+def collect_diagnostics(online: bool = False) -> list[DiagnosticCheck]:
+    python_supported = (3, 11) <= sys.version_info[:2] < (3, 13)
+    dependency_names = ["pandas", "sklearn", "langgraph", "catboost", "lightgbm", "kaggle"]
+    missing_dependencies = [name for name in dependency_names if find_spec(name) is None]
     checks = [
-        ("Python", True, sys.version.split()[0]),
-        ("Ambiente virtual", sys.prefix != sys.base_prefix, sys.prefix),
+        DiagnosticCheck("Python 3.11/3.12", True, python_supported, sys.version.split()[0]),
+        DiagnosticCheck("Ambiente virtual", True, sys.prefix != sys.base_prefix, sys.prefix),
+        DiagnosticCheck(
+            "Dependencias Python",
+            True,
+            not missing_dependencies,
+            "OK" if not missing_dependencies else f"ausentes: {', '.join(missing_dependencies)}",
+        ),
+        DiagnosticCheck(
+            "Contratos",
+            True,
+            (PROJECT_ROOT / "config" / "competitions").is_dir(),
+            str(PROJECT_ROOT / "config" / "competitions"),
+        ),
+        DiagnosticCheck(
+            "Credencial Kaggle",
+            True,
+            OAUTH_CREDENTIALS.is_file(),
+            str(OAUTH_CREDENTIALS),
+        ),
     ]
+    kaggle_ok, kaggle_detail = _command_version(
+        [str(Path(sys.executable).parent / "kaggle.exe"), "--version"]
+    )
+    checks.append(DiagnosticCheck("Kaggle CLI", True, kaggle_ok, kaggle_detail))
+    if online:
+        api_ok, api_detail = _kaggle_api()
+        checks.append(DiagnosticCheck("Kaggle API", True, api_ok, api_detail))
+
     for label, command in [
         ("Git", ["git", "--version"]),
-        ("Kaggle CLI", [str(Path(sys.executable).parent / "kaggle.exe"), "--version"]),
         (
             "Ollama",
             [str(PROJECT_ROOT / "work" / "tools" / "ollama" / "ollama.exe"), "--version"],
@@ -84,20 +133,43 @@ def doctor() -> None:
         ("GPU NVIDIA", ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"]),
     ]:
         ok, detail = _command_version(command)
-        checks.append((label, ok, detail))
+        checks.append(DiagnosticCheck(label, False, ok, detail))
     ollama_ok, ollama_detail = _ollama_server()
-    checks.append(("Servico Ollama", ollama_ok, ollama_detail))
+    checks.append(DiagnosticCheck("Servico Ollama", False, ollama_ok, ollama_detail))
+    return checks
 
-    table = Table(title="Diagnostico do ambiente")
+
+def required_diagnostics_pass(checks: list[DiagnosticCheck]) -> bool:
+    return all(check.ok for check in checks if check.required)
+
+
+@app.command()
+def doctor(online: bool = False) -> None:
+    """Verifica se o ambiente minimo do projeto esta pronto."""
+    checks = collect_diagnostics(online)
+
+    table = Table(title=f"Kaggle-Slaying {__version__} - Diagnostico")
     table.add_column("Componente")
+    table.add_column("Tipo")
     table.add_column("Status")
     table.add_column("Detalhe")
-    for label, ok, detail in checks:
-        table.add_row(label, "OK" if ok else "PENDENTE", str(detail))
+    for check in checks:
+        table.add_row(
+            check.label,
+            "obrigatorio" if check.required else "opcional",
+            "OK" if check.ok else "PENDENTE",
+            check.detail,
+        )
     console.print(table)
 
-    if not all(ok for _, ok, _ in checks):
+    if not required_diagnostics_pass(checks):
         raise typer.Exit(code=1)
+
+
+@app.command("version")
+def version() -> None:
+    """Mostra a versao do projeto."""
+    console.print(__version__)
 
 
 @app.command("bootstrap")
@@ -296,6 +368,23 @@ def submit_approved_command(
         console.print(f"Ja enviada anteriormente: {receipt['submission_ref']}")
     else:
         console.print(f"Submissao enviada: {receipt['submission_ref']}")
+
+
+@app.command("status")
+def workflow_status(competition: str = "playground-series-s6e9") -> None:
+    """Mostra o ultimo estado local sem acessar Kaggle ou treinar modelos."""
+    state, state_path = load_workflow_state(competition)
+    console.print(f"Competicao: {state['competition']}")
+    console.print(f"Fase: [green]{state['phase']}[/green]")
+    console.print(f"Treinamento: {state['training_stage']}")
+    if state.get("submission_ref") is not None:
+        console.print(
+            f"Submissao={state['submission_ref']} | score={state.get('public_score')} | "
+            f"rank={state.get('rank')}/{state.get('total_teams')}"
+        )
+    else:
+        console.print(f"Hash aguardando aprovacao: {state['submission_sha256']}")
+    console.print(f"Estado: {state_path}")
 
 
 @app.command("scout")

@@ -1,100 +1,114 @@
 # Kaggle-Slaying Multi-Agent Team
 
-MVP local e de baixo custo para automatizar o ciclo de uma competicao Kaggle:
-coleta de dados, validacao, treinamento, geracao de submissao e monitoramento.
+MVP local e de baixo custo para executar o ciclo de uma competicao Kaggle:
+obter dados, validar, treinar modelos, preparar uma submissao com aprovacao
+humana e acompanhar o leaderboard.
 
-O primeiro marco usa uma competicao tabular simples e mantem a submissao sob
-aprovacao humana.
+## Estado da versao 0.1
 
-## Arquitetura do MVP
+O fluxo completo ja foi executado em uma competicao real e testado em mais de
+um formato tabular. O projeto evita chamadas pagas: modelos e validacao rodam
+localmente; Ollama e opcional e ainda nao participa do caminho principal.
 
-O nucleo e orientado por um contrato de competicao, e nao pelo Titanic. Cada
-adaptador informa os arquivos, alvo, identificador, metrica e, quando houver,
-colunas de grupo ou tempo. O perfilador inspeciona um novo conjunto de dados e
-o planejador recomenda a estrategia de validacao antes de liberar treinamento.
+O envio ao Kaggle nunca ocorre dentro de `run`. Ele exige um segundo comando
+com o hash exato apresentado pelo gate. Um recibo local impede que o mesmo hash
+seja enviado novamente.
 
-O Titanic funciona como teste de integracao conhecido. Heuristicas especificas
-dele ficam isoladas dos agentes genericos.
+## Requisitos
 
-```powershell
-.\.venv\Scripts\kaggle-slaying.exe profile --competition titanic
-```
+- Windows com Python 3.11 ou 3.12;
+- conta Kaggle;
+- CPU e memoria suficientes para o conjunto de dados;
+- GPU NVIDIA e Ollama sao opcionais.
 
-A politica inicial do futuro Competition Scout esta em
-`config/scout_policy.yaml`. Ela prioriza competicoes tabulares, com submissao
-CSV via API, custo compativel com CPU ou GPU de 6 GB e risco de validacao baixo.
+## Instalacao
 
-Depois de revisar o plano de validacao, a fabrica generica compara um benchmark
-ingenuo, um modelo linear e Extra Trees. Ela suporta classificacao binaria,
-multiclasse e regressao para as metricas declaradas no codigo. Uma candidata so
-e gerada quando o melhor modelo supera o benchmark e o plano de validacao foi
-aprovado. Em bases grandes, a comparacao inicial usa uma amostra estratificada
-de ate 100 mil linhas e tres folds; apenas o vencedor e treinado novamente com
-todos os dados.
+No PowerShell, dentro da pasta do projeto:
 
 ```powershell
-.\.venv\Scripts\kaggle-slaying.exe model-factory --competition titanic `
-  --approve-validation-review
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\kaggle-slaying.exe doctor
 ```
 
-O Competition Scout consulta somente metadados publicos pela API, inspeciona
-arquivos e paginas de avaliacao e aplica a politica de custo e risco. Ele nao
-entra em competicoes, nao aceita regras e nao baixa dados.
+Para autenticar a conta Kaggle:
 
 ```powershell
-.\.venv\Scripts\kaggle-slaying.exe scout --limit 20 --top 5
+.\.venv\Scripts\python.exe -m kaggle_slaying.kaggle_cli auth login
+.\.venv\Scripts\kaggle-slaying.exe doctor --online
 ```
 
-## Competicao ativa do MVP
+Credenciais, dados, modelos e submissoes ficam em pastas ignoradas pelo Git.
 
-O Scout selecionou `playground-series-s6e9` (Predicting Electric Vehicle
-Purchases). A entrada e a aceitacao das regras foram feitas manualmente, e os
-dados permanecem somente em `data/`, fora do controle de versao. O contrato
-declara classificacao binaria, alvo `Will_Buy_EV`, identificador `id` e ROC AUC.
-Nos dados de treino, o alvo usa os rotulos `No` e `Yes`; a submissao deve conter
-a probabilidade da classe `Yes`.
+## Uso principal
 
-```powershell
-.\.venv\Scripts\kaggle-slaying.exe profile --competition playground-series-s6e9
-```
-
-O Experiment Agent v2 usa a mesma amostra e os mesmos folds para comparar duas
-configuracoes LightGBM, CatBoost e a ancora linear. Ele testa blends dos tres
-melhores candidatos sem novos treinamentos, usa a GPU no CatBoost quando
-disponivel e mantem o envio bloqueado ate aprovacao humana.
-
-```powershell
-.\.venv\Scripts\kaggle-slaying.exe experiment-v2 `
-  --competition playground-series-s6e9
-```
-
-Antes de qualquer envio, o Submission Gate compara o CSV com o modelo de
-submissao, valida IDs e probabilidades, registra um hash SHA-256 e consulta o
-limite atual do Kaggle. O comando apenas prepara o manifesto; ele nunca envia o
-arquivo.
-
-```powershell
-.\.venv\Scripts\kaggle-slaying.exe submission-gate `
-  --competition playground-series-s6e9
-```
-
-## Fluxo funcional do MVP
-
-O comando `run` conecta as etapas existentes, reutiliza dados e modelos quando
-possivel e salva um estado resumido. Se o mesmo hash ja tiver um recibo local,
-ele nao repete a submissao e apenas atualiza o leaderboard.
+Cada competicao possui um contrato YAML em `config/competitions`. Depois de
+ler e aceitar manualmente suas regras no Kaggle, execute:
 
 ```powershell
 .\.venv\Scripts\kaggle-slaying.exe run `
   --competition playground-series-s6e9
 ```
 
-Quando o estado for `awaiting_approval`, o envio exige que o hash mostrado seja
-informado explicitamente. Repetir o comando com um hash ja enviado e seguro: o
-recibo existente e retornado sem consumir outra submissao.
+O comando baixa dados ausentes, cria o perfil, escolhe a fabrica compativel,
+treina ou reutiliza modelos, valida o CSV e salva o estado. Possiveis fases:
+
+- `awaiting_approval`: candidata pronta, sem envio;
+- `submitted`: recibo encontrado e leaderboard atualizado;
+- `blocked`: alguma verificacao falhou.
+
+Consulte o ultimo estado sem acessar a internet ou treinar novamente:
+
+```powershell
+.\.venv\Scripts\kaggle-slaying.exe status `
+  --competition playground-series-s6e9
+```
+
+## Envio com aprovacao humana
+
+Somente depois de revisar o estado e autorizar explicitamente o hash:
 
 ```powershell
 .\.venv\Scripts\kaggle-slaying.exe submit-approved `
   --competition playground-series-s6e9 `
   --sha256 HASH_APROVADO
+```
+
+Repetir esse comando com um hash que ja possui recibo nao cria outra
+submissao.
+
+## Nova competicao
+
+Crie `config/competitions/SLUG.yaml` informando pelo menos:
+
+```yaml
+name: Nome da competicao
+slug: slug-kaggle
+modality: tabular
+problem_type: binary_classification
+target_column: target
+id_column: id
+metric: roc_auc
+data_directory: data/raw/slug-kaggle
+submission_file: submission.csv
+group_column: null
+time_column: null
+requires_rule_acceptance: true
+```
+
+O MVP escolhe o experimento v2 para classificacao binaria com AUC e usa a
+fabrica generica v1 nas demais combinacoes suportadas. Se houver possiveis
+grupos ou ordem temporal, o treinamento e bloqueado para revisao.
+
+## Comandos auxiliares
+
+```powershell
+# Descobrir competicoes sem entrar ou baixar dados
+.\.venv\Scripts\kaggle-slaying.exe scout --limit 20 --top 5
+
+# Gerar apenas o perfil
+.\.venv\Scripts\kaggle-slaying.exe profile --competition titanic
+
+# Mostrar todos os comandos
+.\.venv\Scripts\kaggle-slaying.exe --help
 ```

@@ -9,7 +9,11 @@ import kaggle_slaying.submission_gate as submission_gate_module
 import kaggle_slaying.workflow as workflow_module
 from kaggle_slaying.competition import CompetitionContract
 from kaggle_slaying.submission_gate import SubmissionStatus
-from kaggle_slaying.workflow import ensure_competition_data, find_submission_receipt
+from kaggle_slaying.workflow import (
+    ensure_competition_data,
+    find_submission_receipt,
+    load_workflow_state,
+)
 
 
 def test_ensure_competition_data_reuses_complete_directory(tmp_path: Path) -> None:
@@ -47,6 +51,18 @@ def test_find_submission_receipt_matches_authorized_hash(tmp_path: Path) -> None
     assert receipt is not None
     assert receipt["submission_ref"] == 123
     assert find_submission_receipt(tmp_path, "different-hash") is None
+
+
+def test_load_workflow_state_reads_local_state(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(workflow_module, "PROJECT_ROOT", tmp_path)
+    state_path = tmp_path / "artifacts" / "demo" / "workflow" / "state.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(json.dumps({"competition": "demo", "phase": "submitted"}))
+
+    state, loaded_path = load_workflow_state("demo")
+
+    assert state["phase"] == "submitted"
+    assert loaded_path == state_path
 
 
 def test_workflow_builds_then_reuses_fresh_competition(
