@@ -1,0 +1,17 @@
+name: Predicting Electric Vehicle Purchases
+slug: playground-series-s6e9
+modality: tabular
+problem_type: binary_classification
+target_column: Will_Buy_EV
+id_column: id
+metric: roc_auc
+data_directory: data/raw/playground-series-s6e9
+extracted_subdirectory: files
+train_file: train.csv
+test_file: test.csv
+sample_submission_file: sample_submission.csv
+submission_file: submission.csv
+group_column: null
+time_column: null
+requires_rule_acceptance: true
+

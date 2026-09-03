@@ -169,10 +169,17 @@ def profile_competition(contract: CompetitionContract) -> DatasetReport:
         unique_ratio = unique_count / max(len(train), 1)
         id_like = unique_ratio >= 0.98
         high_cardinality = kind == "categorical" and unique_ratio >= 0.20
+        is_identifier = name == contract.id_column
         unseen_rate = (
-            _categorical_unseen_rate(train_column, test_column) if kind == "categorical" else None
+            _categorical_unseen_rate(train_column, test_column)
+            if kind == "categorical" and not is_identifier
+            else None
         )
-        mean_shift = _numeric_mean_shift(train_column, test_column) if kind == "numeric" else None
+        mean_shift = (
+            _numeric_mean_shift(train_column, test_column)
+            if kind == "numeric" and not is_identifier
+            else None
+        )
         profile = ColumnProfile(
             name=name,
             kind=kind,

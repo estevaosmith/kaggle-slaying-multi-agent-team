@@ -18,6 +18,7 @@ from kaggle_slaying.graph import build_bootstrap_graph, initial_state
 from kaggle_slaying.model_factory import run_model_factory
 from kaggle_slaying.monitor import refresh_leaderboard_report
 from kaggle_slaying.profiler import save_dataset_report
+from kaggle_slaying.scout import run_scout
 from kaggle_slaying.tournament import run_tournament
 from kaggle_slaying.validation_v2 import run_validation_v2
 
@@ -214,6 +215,38 @@ def model_factory(
         raise typer.Exit(code=2)
     console.print(f"[green]Gate: ACEITO[/green] | modelo={result['selected']['name']}")
     console.print(f"Submissao candidata: {result['submission_path']}")
+
+
+@app.command("scout")
+def scout(limit: int = 20, top: int = 5) -> None:
+    """Ranqueia competicoes ativas sem entrar nelas ou baixar seus dados."""
+    report = run_scout(limit=limit)
+    recommendations = report["recommendations"][:top]
+    table = Table(title="Competition Scout v1")
+    table.add_column("Competicao")
+    table.add_column("Decisao")
+    table.add_column("Nota", justify="right")
+    table.add_column("Tipo")
+    table.add_column("Metrica")
+    table.add_column("Equipes", justify="right")
+    table.add_column("Dias", justify="right")
+    for item in recommendations:
+        table.add_row(
+            item["slug"],
+            item["decision"],
+            f"{item['score']:.3f}",
+            item["problem_type"],
+            item["metric"],
+            str(item["team_count"]),
+            f"{item['days_remaining']:.0f}",
+        )
+    console.print(table)
+    console.print(
+        f"Inspecionadas={report['summary']['inspected']} | "
+        f"investigar={report['summary']['investigate']} | "
+        f"rejeitadas={report['summary']['reject']}"
+    )
+    console.print(f"Relatorio: {report['report_path']}")
 
 
 if __name__ == "__main__":

@@ -34,3 +34,24 @@ aprovado.
 .\.venv\Scripts\kaggle-slaying.exe model-factory --competition titanic `
   --approve-validation-review
 ```
+
+O Competition Scout consulta somente metadados publicos pela API, inspeciona
+arquivos e paginas de avaliacao e aplica a politica de custo e risco. Ele nao
+entra em competicoes, nao aceita regras e nao baixa dados.
+
+```powershell
+.\.venv\Scripts\kaggle-slaying.exe scout --limit 20 --top 5
+```
+
+## Competicao ativa do MVP
+
+O Scout selecionou `playground-series-s6e9` (Predicting Electric Vehicle
+Purchases). A entrada e a aceitacao das regras foram feitas manualmente, e os
+dados permanecem somente em `data/`, fora do controle de versao. O contrato
+declara classificacao binaria, alvo `Will_Buy_EV`, identificador `id` e ROC AUC.
+Nos dados de treino, o alvo usa os rotulos `No` e `Yes`; a submissao deve conter
+a probabilidade da classe `Yes`.
+
+```powershell
+.\.venv\Scripts\kaggle-slaying.exe profile --competition playground-series-s6e9
+```

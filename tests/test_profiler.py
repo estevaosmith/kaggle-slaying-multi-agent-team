@@ -46,6 +46,7 @@ def test_generic_profiler_recommends_review_for_group_candidate(tmp_path: Path) 
     assert report.validation.strategy == "stratified_kfold"
     assert report.validation.requires_review is True
     assert report.potential_group_columns == ["customer_group"]
+    assert not any("row_id" in warning for warning in report.warnings)
 
 
 def test_contract_group_column_selects_group_validation(tmp_path: Path) -> None:
