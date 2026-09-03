@@ -98,7 +98,7 @@ def find_submission_receipt(directory: Path, sha256: str) -> dict[str, Any] | No
     return None
 
 
-def _training_artifacts(contract: CompetitionContract) -> tuple[str, Path, Path]:
+def training_artifacts(contract: CompetitionContract) -> tuple[str, Path, Path]:
     if contract.problem_type == "binary_classification" and contract.metric in {"auc", "roc_auc"}:
         directory = PROJECT_ROOT / "artifacts" / contract.slug / "model_factory_v2"
         return (
@@ -118,7 +118,7 @@ def _load_or_train(
     contract: CompetitionContract,
     force_retrain: bool,
 ) -> tuple[str, dict[str, Any], Path, bool]:
-    stage, report_path, submission_path = _training_artifacts(contract)
+    stage, report_path, submission_path = training_artifacts(contract)
     if not force_retrain and report_path.is_file() and submission_path.is_file():
         with report_path.open(encoding="utf-8") as report_file:
             return stage, json.load(report_file), report_path, True

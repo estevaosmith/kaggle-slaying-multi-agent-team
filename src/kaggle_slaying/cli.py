@@ -12,6 +12,7 @@ from urllib.request import urlopen
 
 import typer
 from rich.console import Console
+from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from kaggle_slaying import __version__
@@ -27,7 +28,12 @@ from kaggle_slaying.scout import run_scout
 from kaggle_slaying.submission_gate import run_submission_gate
 from kaggle_slaying.tournament import run_tournament
 from kaggle_slaying.validation_v2 import run_validation_v2
-from kaggle_slaying.workflow import load_workflow_state, run_workflow, submit_approved
+from kaggle_slaying.workflow import (
+    load_workflow_state,
+    run_workflow,
+    submit_approved,
+    training_artifacts,
+)
 
 app = typer.Typer(help="Ferramentas do Kaggle-Slaying Multi-Agent Team.")
 console = Console()
@@ -316,7 +322,12 @@ def submission_gate(competition: str = "playground-series-s6e9") -> None:
     """Valida e registra uma candidata sem envia-la ao Kaggle."""
     contract_path = PROJECT_ROOT / "config" / "competitions" / f"{competition}.yaml"
     contract = load_competition(contract_path)
-    report, report_path = run_submission_gate(contract)
+    _, source_report_path, submission_path = training_artifacts(contract)
+    report, report_path = run_submission_gate(
+        contract,
+        submission_path=submission_path,
+        source_report_path=source_report_path,
+    )
     status = "PRONTA" if report.ready else "BLOQUEADA"
     console.print(f"Gate de submissao: {status}")
     console.print(
@@ -385,6 +396,85 @@ def workflow_status(competition: str = "playground-series-s6e9") -> None:
     else:
         console.print(f"Hash aguardando aprovacao: {state['submission_sha256']}")
     console.print(f"Estado: {state_path}")
+
+
+def configured_competitions() -> list[str]:
+    directory = PROJECT_ROOT / "config" / "competitions"
+    return sorted(path.stem for path in directory.glob("*.yaml"))
+
+
+def _choose_competition() -> str:
+    competitions = configured_competitions()
+    if not competitions:
+        raise FileNotFoundError("Nenhuma competicao configurada.")
+    preferred = (
+        "playground-series-s6e9" if "playground-series-s6e9" in competitions else competitions[0]
+    )
+    return Prompt.ask("Competicao", choices=competitions, default=preferred)
+
+
+def _show_competitions() -> None:
+    table = Table(title="Competicoes configuradas")
+    table.add_column("Slug")
+    table.add_column("Tipo")
+    table.add_column("Metrica")
+    for slug in configured_competitions():
+        contract = load_competition(PROJECT_ROOT / "config" / "competitions" / f"{slug}.yaml")
+        table.add_row(slug, contract.problem_type, contract.metric)
+    console.print(table)
+
+
+def _show_menu() -> None:
+    console.print("\n[bold]Kaggle-Slaying v0.1[/bold]")
+    console.print("1. Diagnosticar ambiente")
+    console.print("2. Listar competicoes configuradas")
+    console.print("3. Executar fluxo")
+    console.print("4. Consultar estado")
+    console.print("5. Validar submissao")
+    console.print("6. Enviar submissao aprovada")
+    console.print("7. Atualizar leaderboard")
+    console.print("0. Sair")
+
+
+@app.command("menu")
+def interactive_menu() -> None:
+    """Abre um menu simples para operar o MVP pelo terminal."""
+    while True:
+        _show_menu()
+        choice = Prompt.ask("Escolha", choices=[str(value) for value in range(8)], default="0")
+        if choice == "0":
+            console.print("Ate logo.")
+            return
+        try:
+            if choice == "1":
+                doctor(online=Confirm.ask("Incluir teste online do Kaggle?", default=False))
+            elif choice == "2":
+                _show_competitions()
+            elif choice == "3":
+                competition = _choose_competition()
+                username = Prompt.ask("Usuario Kaggle", default="estevaosmith")
+                run_mvp(competition=competition, username=username, force_retrain=False)
+            elif choice == "4":
+                workflow_status(competition=_choose_competition())
+            elif choice == "5":
+                submission_gate(competition=_choose_competition())
+            elif choice == "6":
+                competition = _choose_competition()
+                state, _ = load_workflow_state(competition)
+                approved_hash = state["submission_sha256"]
+                console.print(f"Competicao: {competition}")
+                console.print(f"Hash: {approved_hash}")
+                confirmation = Prompt.ask("Digite ENVIAR para confirmar", default="CANCELAR")
+                if confirmation != "ENVIAR":
+                    console.print("Envio cancelado.")
+                else:
+                    submit_approved_command(sha256=approved_hash, competition=competition)
+            elif choice == "7":
+                competition = _choose_competition()
+                username = Prompt.ask("Usuario Kaggle", default="estevaosmith")
+                leaderboard_report(competition=competition, username=username)
+        except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as error:
+            console.print(f"[red]Nao foi possivel concluir: {error}[/red]")
 
 
 @app.command("scout")

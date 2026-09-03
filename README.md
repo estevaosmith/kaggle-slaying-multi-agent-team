@@ -45,6 +45,17 @@ Credenciais, dados, modelos e submissoes ficam em pastas ignoradas pelo Git.
 Cada competicao possui um contrato YAML em `config/competitions`. Depois de
 ler e aceitar manualmente suas regras no Kaggle, execute:
 
+Para uma demonstracao guiada, abra o menu interativo:
+
+```powershell
+.\.venv\Scripts\kaggle-slaying.exe menu
+```
+
+O menu chama os mesmos servicos dos comandos abaixo. A opcao de envio mostra a
+competicao e o hash e exige que a palavra `ENVIAR` seja digitada.
+
+Para executar diretamente por comando:
+
 ```powershell
 .\.venv\Scripts\kaggle-slaying.exe run `
   --competition playground-series-s6e9
