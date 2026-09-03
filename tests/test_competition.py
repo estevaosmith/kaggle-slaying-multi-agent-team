@@ -12,9 +12,7 @@ def test_titanic_contract() -> None:
 
 
 def test_playground_ev_contract() -> None:
-    contract = load_competition(
-        Path("config/competitions/playground-series-s6e9.yaml")
-    )
+    contract = load_competition(Path("config/competitions/playground-series-s6e9.yaml"))
 
     assert contract.slug == "playground-series-s6e9"
     assert contract.target_column == "Will_Buy_EV"

@@ -57,3 +57,13 @@ a probabilidade da classe `Yes`.
 ```powershell
 .\.venv\Scripts\kaggle-slaying.exe profile --competition playground-series-s6e9
 ```
+
+O Experiment Agent v2 usa a mesma amostra e os mesmos folds para comparar duas
+configuracoes LightGBM, CatBoost e a ancora linear. Ele testa blends dos tres
+melhores candidatos sem novos treinamentos, usa a GPU no CatBoost quando
+disponivel e mantem o envio bloqueado ate aprovacao humana.
+
+```powershell
+.\.venv\Scripts\kaggle-slaying.exe experiment-v2 `
+  --competition playground-series-s6e9
+```

@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from kaggle_slaying.competition import load_competition
+from kaggle_slaying.experiment_v2 import run_experiment_v2
 from kaggle_slaying.feature_experiment import run_feature_experiment
 from kaggle_slaying.graph import build_bootstrap_graph, initial_state
 from kaggle_slaying.model_factory import run_model_factory
@@ -215,6 +216,25 @@ def model_factory(
         raise typer.Exit(code=2)
     console.print(f"[green]Gate: ACEITO[/green] | modelo={result['selected']['name']}")
     console.print(f"Submissao candidata: {result['submission_path']}")
+
+
+@app.command("experiment-v2")
+def experiment_v2(competition: str = "playground-series-s6e9") -> None:
+    """Compara boosting e ensemble com triagem economica e gate humano."""
+    contract_path = PROJECT_ROOT / "config" / "competitions" / f"{competition}.yaml"
+    contract = load_competition(contract_path)
+    result = run_experiment_v2(contract)
+    for candidate in result["candidates"]:
+        console.print(
+            f"{candidate['name']}: media={candidate['cv_mean']:.4f} "
+            f"robusta={candidate['robust_score']:.4f} dispositivo={candidate['device']}"
+        )
+    console.print(
+        f"[green]Vencedor v2:[/green] {result['selected']['name']} | "
+        f"ganho vs linear={result['improvement_vs_linear']:.5f}"
+    )
+    console.print(f"Submissao candidata: {result['submission_path']}")
+    console.print("[yellow]Envio ao Kaggle continua bloqueado por aprovacao humana.[/yellow]")
 
 
 @app.command("scout")
