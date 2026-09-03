@@ -77,3 +77,24 @@ arquivo.
 .\.venv\Scripts\kaggle-slaying.exe submission-gate `
   --competition playground-series-s6e9
 ```
+
+## Fluxo funcional do MVP
+
+O comando `run` conecta as etapas existentes, reutiliza dados e modelos quando
+possivel e salva um estado resumido. Se o mesmo hash ja tiver um recibo local,
+ele nao repete a submissao e apenas atualiza o leaderboard.
+
+```powershell
+.\.venv\Scripts\kaggle-slaying.exe run `
+  --competition playground-series-s6e9
+```
+
+Quando o estado for `awaiting_approval`, o envio exige que o hash mostrado seja
+informado explicitamente. Repetir o comando com um hash ja enviado e seguro: o
+recibo existente e retornado sem consumir outra submissao.
+
+```powershell
+.\.venv\Scripts\kaggle-slaying.exe submit-approved `
+  --competition playground-series-s6e9 `
+  --sha256 HASH_APROVADO
+```

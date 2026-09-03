@@ -153,10 +153,14 @@ def validate_submission_candidate(
     )
 
 
-def run_submission_gate(contract: CompetitionContract) -> tuple[SubmissionGateReport, Path]:
+def run_submission_gate(
+    contract: CompetitionContract,
+    submission_path: Path | None = None,
+    source_report_path: Path | None = None,
+) -> tuple[SubmissionGateReport, Path]:
     experiment_directory = PROJECT_ROOT / "artifacts" / contract.slug / "model_factory_v2"
-    submission_path = experiment_directory / contract.submission_file
-    source_report_path = experiment_directory / "experiment_report.json"
+    submission_path = submission_path or experiment_directory / contract.submission_file
+    source_report_path = source_report_path or experiment_directory / "experiment_report.json"
     status = fetch_submission_status(contract.slug)
     report = validate_submission_candidate(
         contract,

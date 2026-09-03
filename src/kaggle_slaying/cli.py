@@ -23,6 +23,7 @@ from kaggle_slaying.scout import run_scout
 from kaggle_slaying.submission_gate import run_submission_gate
 from kaggle_slaying.tournament import run_tournament
 from kaggle_slaying.validation_v2 import run_validation_v2
+from kaggle_slaying.workflow import run_workflow, submit_approved
 
 app = typer.Typer(help="Ferramentas do Kaggle-Slaying Multi-Agent Team.")
 console = Console()
@@ -255,6 +256,46 @@ def submission_gate(competition: str = "playground-series-s6e9") -> None:
         console.print(f"- {blocker}")
     console.print(f"Relatorio: {report_path}")
     console.print("[yellow]Nenhuma submissao foi enviada.[/yellow]")
+
+
+@app.command("run")
+def run_mvp(
+    competition: str = "playground-series-s6e9",
+    username: str = "estevaosmith",
+    force_retrain: bool = False,
+) -> None:
+    """Executa o fluxo do MVP e para no gate de aprovacao."""
+    contract_path = PROJECT_ROOT / "config" / "competitions" / f"{competition}.yaml"
+    contract = load_competition(contract_path)
+    report, state_path = run_workflow(contract, username, force_retrain)
+    console.print(f"Fase: [green]{report.phase}[/green]")
+    console.print(
+        f"Dados reutilizados={'sim' if report.data_reused else 'nao'} | "
+        f"treino reutilizado={'sim' if report.training_reused else 'nao'}"
+    )
+    if report.submission_ref is not None:
+        console.print(
+            f"Submissao={report.submission_ref} | score={report.public_score} | "
+            f"rank={report.rank}/{report.total_teams}"
+        )
+    else:
+        console.print(f"Aguardando aprovacao do hash: {report.submission_sha256}")
+    console.print(f"Estado: {state_path}")
+
+
+@app.command("submit-approved")
+def submit_approved_command(
+    sha256: str = typer.Option(..., "--sha256"),
+    competition: str = "playground-series-s6e9",
+) -> None:
+    """Envia uma unica vez o CSV cujo hash foi aprovado pelo usuario."""
+    contract_path = PROJECT_ROOT / "config" / "competitions" / f"{competition}.yaml"
+    contract = load_competition(contract_path)
+    receipt = submit_approved(contract, sha256)
+    if receipt["already_submitted"]:
+        console.print(f"Ja enviada anteriormente: {receipt['submission_ref']}")
+    else:
+        console.print(f"Submissao enviada: {receipt['submission_ref']}")
 
 
 @app.command("scout")
