@@ -20,6 +20,7 @@ from kaggle_slaying.model_factory import run_model_factory
 from kaggle_slaying.monitor import refresh_leaderboard_report
 from kaggle_slaying.profiler import save_dataset_report
 from kaggle_slaying.scout import run_scout
+from kaggle_slaying.submission_gate import run_submission_gate
 from kaggle_slaying.tournament import run_tournament
 from kaggle_slaying.validation_v2 import run_validation_v2
 
@@ -235,6 +236,25 @@ def experiment_v2(competition: str = "playground-series-s6e9") -> None:
     )
     console.print(f"Submissao candidata: {result['submission_path']}")
     console.print("[yellow]Envio ao Kaggle continua bloqueado por aprovacao humana.[/yellow]")
+
+
+@app.command("submission-gate")
+def submission_gate(competition: str = "playground-series-s6e9") -> None:
+    """Valida e registra uma candidata sem envia-la ao Kaggle."""
+    contract_path = PROJECT_ROOT / "config" / "competitions" / f"{competition}.yaml"
+    contract = load_competition(contract_path)
+    report, report_path = run_submission_gate(contract)
+    status = "PRONTA" if report.ready else "BLOQUEADA"
+    console.print(f"Gate de submissao: {status}")
+    console.print(
+        f"Submissoes: total={report.status.total_submissions}, "
+        f"hoje={report.status.submissions_today}, permitidas agora={report.status.allowed_now}"
+    )
+    console.print(f"SHA-256: {report.sha256}")
+    for blocker in report.blockers:
+        console.print(f"- {blocker}")
+    console.print(f"Relatorio: {report_path}")
+    console.print("[yellow]Nenhuma submissao foi enviada.[/yellow]")
 
 
 @app.command("scout")

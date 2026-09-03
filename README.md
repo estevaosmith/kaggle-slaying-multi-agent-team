@@ -67,3 +67,13 @@ disponivel e mantem o envio bloqueado ate aprovacao humana.
 .\.venv\Scripts\kaggle-slaying.exe experiment-v2 `
   --competition playground-series-s6e9
 ```
+
+Antes de qualquer envio, o Submission Gate compara o CSV com o modelo de
+submissao, valida IDs e probabilidades, registra um hash SHA-256 e consulta o
+limite atual do Kaggle. O comando apenas prepara o manifesto; ele nunca envia o
+arquivo.
+
+```powershell
+.\.venv\Scripts\kaggle-slaying.exe submission-gate `
+  --competition playground-series-s6e9
+```
