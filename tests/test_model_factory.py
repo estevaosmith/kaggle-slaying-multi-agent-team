@@ -7,6 +7,7 @@ from kaggle_slaying.model_factory import (
     build_model_factory_graph,
     metric_spec,
     run_model_factory,
+    screening_frame,
 )
 
 
@@ -53,6 +54,22 @@ def test_model_factory_graph_has_parallel_model_agents() -> None:
     nodes = build_model_factory_graph().get_graph().nodes
 
     assert {"benchmark", "linear", "extra_trees", "selection"}.issubset(nodes)
+
+
+def test_screening_frame_preserves_binary_target_proportion(tmp_path: Path) -> None:
+    contract = _classification_contract(tmp_path)
+    train = pd.DataFrame(
+        {
+            "row_id": range(1_000),
+            "signal": range(1_000),
+            "target": [0] * 900 + [1] * 100,
+        }
+    )
+
+    screened = screening_frame(train, contract, "stratified_kfold", max_rows=100)
+
+    assert len(screened) == 100
+    assert screened["target"].value_counts().to_dict() == {0: 90, 1: 10}
 
 
 def test_factory_gate_blocks_unreviewed_group_candidate(tmp_path: Path) -> None:

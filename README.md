@@ -28,7 +28,9 @@ Depois de revisar o plano de validacao, a fabrica generica compara um benchmark
 ingenuo, um modelo linear e Extra Trees. Ela suporta classificacao binaria,
 multiclasse e regressao para as metricas declaradas no codigo. Uma candidata so
 e gerada quando o melhor modelo supera o benchmark e o plano de validacao foi
-aprovado.
+aprovado. Em bases grandes, a comparacao inicial usa uma amostra estratificada
+de ate 100 mil linhas e tres folds; apenas o vencedor e treinado novamente com
+todos os dados.
 
 ```powershell
 .\.venv\Scripts\kaggle-slaying.exe model-factory --competition titanic `

@@ -23,6 +23,7 @@ from sklearn.model_selection import (
     StratifiedGroupKFold,
     StratifiedKFold,
     TimeSeriesSplit,
+    train_test_split,
 )
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -36,6 +37,10 @@ from kaggle_slaying.profiler import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SCREENING_MAX_ROWS = 100_000
+SCREENING_MAX_FOLDS = 3
+SCREENING_TREE_ESTIMATORS = 100
+FINAL_TREE_ESTIMATORS = 250
 
 
 @dataclass(frozen=True)
@@ -52,6 +57,7 @@ class CandidateScore:
     robust_score: float
     fold_scores: list[float]
     benchmark: bool
+    evaluated_rows: int
 
 
 class FactoryState(TypedDict, total=False):
@@ -153,6 +159,7 @@ def candidate_pipeline(
     problem_type: str,
     feature_frame: pd.DataFrame,
     random_state: int = 42,
+    tree_estimators: int = FINAL_TREE_ESTIMATORS,
 ) -> Pipeline:
     classification = problem_type in CLASSIFICATION_TYPES
     if name == "benchmark":
@@ -168,7 +175,7 @@ def candidate_pipeline(
     elif name == "extra_trees":
         estimator = (
             ExtraTreesClassifier(
-                n_estimators=250,
+                n_estimators=tree_estimators,
                 min_samples_leaf=2,
                 max_features="sqrt",
                 class_weight="balanced",
@@ -177,7 +184,7 @@ def candidate_pipeline(
             )
             if classification
             else ExtraTreesRegressor(
-                n_estimators=250,
+                n_estimators=tree_estimators,
                 min_samples_leaf=2,
                 max_features=0.8,
                 n_jobs=2,
@@ -189,8 +196,15 @@ def candidate_pipeline(
     return Pipeline([("preprocessor", build_preprocessor(feature_frame)), ("model", estimator)])
 
 
-def _fold_count(report: DatasetReport, target: pd.Series, groups: pd.Series | None) -> int:
+def _fold_count(
+    report: DatasetReport,
+    target: pd.Series,
+    groups: pd.Series | None,
+    fold_limit: int | None = None,
+) -> int:
     requested = report.validation.folds
+    if fold_limit is not None:
+        requested = min(requested, fold_limit)
     if groups is not None:
         available = int(groups.nunique())
     elif report.problem_type in CLASSIFICATION_TYPES:
@@ -207,10 +221,11 @@ def validation_splits(
     train: pd.DataFrame,
     target: pd.Series,
     report: DatasetReport,
+    fold_limit: int | None = None,
 ) -> list[tuple[np.ndarray, np.ndarray]]:
     plan = report.validation
     groups = train[plan.group_column] if plan.group_column else None
-    folds = _fold_count(report, target, groups)
+    folds = _fold_count(report, target, groups, fold_limit)
     row_positions = np.arange(len(train))
     if plan.strategy == "stratified_group_kfold":
         splitter = StratifiedGroupKFold(n_splits=folds, shuffle=True, random_state=42)
@@ -230,17 +245,48 @@ def validation_splits(
     return list(KFold(n_splits=folds, shuffle=True, random_state=42).split(row_positions))
 
 
+def screening_frame(
+    train: pd.DataFrame,
+    contract: CompetitionContract,
+    validation_strategy: str,
+    max_rows: int = SCREENING_MAX_ROWS,
+) -> pd.DataFrame:
+    """Cria uma amostra deterministica apenas para a triagem de modelos."""
+    if len(train) <= max_rows or validation_strategy not in {"stratified_kfold", "kfold"}:
+        return train
+    if contract.problem_type in CLASSIFICATION_TYPES:
+        sampled, _ = train_test_split(
+            train,
+            train_size=max_rows,
+            stratify=train[contract.target_column],
+            random_state=42,
+        )
+        return sampled.sort_index()
+    return train.sample(n=max_rows, random_state=42).sort_index()
+
+
 def evaluate_candidate(contract: CompetitionContract, name: str) -> CandidateScore:
     report = profile_competition(contract)
     data_directory = competition_data_directory(contract)
     train = pd.read_csv(data_directory / contract.train_file)
+    train = screening_frame(train, contract, report.validation.strategy)
     features = selected_features(report, contract)
     feature_frame = train[features]
     target = train[contract.target_column]
-    pipeline = candidate_pipeline(name, contract.problem_type, feature_frame)
+    pipeline = candidate_pipeline(
+        name,
+        contract.problem_type,
+        feature_frame,
+        tree_estimators=SCREENING_TREE_ESTIMATORS,
+    )
     scorer = get_scorer(metric_spec(contract.metric).scorer)
     scores: list[float] = []
-    for fit_indices, validation_indices in validation_splits(train, target, report):
+    for fit_indices, validation_indices in validation_splits(
+        train,
+        target,
+        report,
+        fold_limit=SCREENING_MAX_FOLDS,
+    ):
         fold_model = clone(pipeline)
         fold_model.fit(feature_frame.iloc[fit_indices], target.iloc[fit_indices])
         score = scorer(
@@ -258,6 +304,7 @@ def evaluate_candidate(contract: CompetitionContract, name: str) -> CandidateSco
         robust_score=mean - 0.25 * std,
         fold_scores=scores,
         benchmark=name == "benchmark",
+        evaluated_rows=len(train),
     )
 
 
@@ -325,6 +372,11 @@ def selection_agent(state: FactoryState) -> FactoryState:
         "competition": contract.slug,
         "problem_type": contract.problem_type,
         "metric": contract.metric,
+        "screening": {
+            "max_rows": SCREENING_MAX_ROWS,
+            "max_folds": SCREENING_MAX_FOLDS,
+            "tree_estimators": SCREENING_TREE_ESTIMATORS,
+        },
         "validation": asdict(report.validation),
         "features": selected_features(report, contract),
         "candidates": [asdict(item) for item in sorted(candidates, key=lambda x: x.name)],
@@ -340,7 +392,12 @@ def selection_agent(state: FactoryState) -> FactoryState:
         test = pd.read_csv(data_directory / contract.test_file)
         sample = pd.read_csv(data_directory / contract.sample_submission_file)
         features = result["features"]
-        model = candidate_pipeline(selected.name, contract.problem_type, train[features])
+        model = candidate_pipeline(
+            selected.name,
+            contract.problem_type,
+            train[features],
+            tree_estimators=FINAL_TREE_ESTIMATORS,
+        )
         model.fit(train[features], train[contract.target_column])
         submission = _prediction_frame(model, test[features], sample, contract)
         if not submission[contract.id_column].equals(sample[contract.id_column]):
