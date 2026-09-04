@@ -1,0 +1,16 @@
+name: Spaceship Titanic
+slug: spaceship-titanic
+modality: tabular
+problem_type: binary_classification
+target_column: Transported
+id_column: PassengerId
+metric: accuracy
+data_directory: data/raw/spaceship-titanic
+extracted_subdirectory: files
+train_file: train.csv
+test_file: test.csv
+sample_submission_file: sample_submission.csv
+submission_file: submission.csv
+group_column: null
+time_column: null
+requires_rule_acceptance: true
